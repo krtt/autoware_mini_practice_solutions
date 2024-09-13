@@ -10,6 +10,7 @@ from pyproj import CRS, Transformer, Proj
 from novatel_oem7_msgs.msg import INSPVA
 from geometry_msgs.msg import PoseStamped, TwistStamped, Quaternion, TransformStamped
 
+
 class Localizer:
     def __init__(self):
 
@@ -44,19 +45,23 @@ class Localizer:
         
         # Substract our custom location point
         pos_utm_x, pos_utm_y = x_utm-self.origin_x, y_utm-self.origin_y 
-        print(pos_utm_x, pos_utm_y)
+        #print(pos_utm_x, pos_utm_y)
         
-        # Calculate azimuth correction for UTM zone 35N projection
+        # Calculate azimuth correction for UTM zone 35N projection (in degrees)
         azimuth_correction = self.utm_projection.get_factors(msg.longitude, msg.latitude).meridian_convergence
         
         # The correction is subtracted from azimuth angle coming from the message
-        corrected_azymuth = msg.azimuth - azimuth_correction
+        corrected_azimuth_deg = msg.azimuth - azimuth_correction
         
-        # Get yaw
-        yaw = self.convert_azimuth_to_yaw(corrected_azymuth)
+        # Convert to radians (azimuth from Novatel is in degrees)
+        corrected_azimuth_rad = corrected_azimuth_deg/(180./3.1416)
         
-        # Convert yaw (radians) to quaternion. Ignore roll and pitch for our use case.
+        # Get yaw in radians
+        yaw = self.convert_azimuth_to_yaw(corrected_azimuth_rad)
+        
+        # Convert yaw in radians to quaternion. Ignore roll and pitch for our use case.
         quat_x, quat_y, quat_z, quat_w = quaternion_from_euler(0, 0, yaw)
+
         
         # To publish current_pose:
         
@@ -85,11 +90,26 @@ class Localizer:
         # Publish
         self.current_velocity_pub.publish(current_velocity_msg)
         
-
-    # Converts azimuth to yaw. 
-    # - Azimuth is CW angle from the North (y-axis) in radians. 
-    # - Yaw is CCW angle from the East (x-axis) in radians.
-    def convert_azimuth_to_yaw(self, azimuth):        
+        # To publish transform from map frame to base_link:
+        
+        transform_map_baseLink = TransformStamped()
+        transform_map_baseLink.header.stamp = msg.header.stamp
+        transform_map_baseLink.header.frame_id = "map"
+        transform_map_baseLink.child_frame_id = "base_link"
+        # Translation
+        transform_map_baseLink.transform.translation = current_pose_msg.pose.position
+        # Rotation
+        transform_map_baseLink.transform.rotation = current_pose_msg.pose.orientation
+        # Publish
+        self.br.sendTransform(transform_map_baseLink)
+    
+    # Convert azimuth to yaw angle
+    def convert_azimuth_to_yaw(self, azimuth):
+        """
+        Converts azimuth to yaw. Azimuth is CW angle from the North. Yaw is CCW angle from the East.
+        :param azimuth: azimuth in radians
+        :return: yaw in radians
+        """
         yaw = -azimuth + math.pi/2
         # Clamp within 0 to 2 pi
         if yaw > 2 * math.pi:
@@ -98,7 +118,6 @@ class Localizer:
             yaw += 2 * math.pi
 
         return yaw
-    
 
     def run(self):
         rospy.spin()
