@@ -58,7 +58,7 @@ class Localizer:
         # Convert yaw (radians) to quaternion. Ignore roll and pitch for our use case.
         quat_x, quat_y, quat_z, quat_w = quaternion_from_euler(0, 0, yaw)
         
-        # To publish current pose:
+        # To publish current_pose:
         
         current_pose_msg = PoseStamped()
         current_pose_msg.header.stamp = msg.header.stamp
@@ -71,6 +71,19 @@ class Localizer:
         current_pose_msg.pose.orientation = Quaternion(quat_x, quat_y, quat_z, quat_w)
         # Publish
         self.current_pose_pub.publish(current_pose_msg)
+        
+        # To publish current_velocity:
+        
+        # Calculate velocity from the message x and y components 
+        velocity_norm = math.sqrt(msg.north_velocity**2 + msg.east_velocity**2)
+        
+        current_velocity_msg = TwistStamped()
+        current_velocity_msg.header.stamp = msg.header.stamp
+        current_velocity_msg.header.frame_id = "base_link"
+        # Write twist linear x
+        current_velocity_msg.twist.linear.x = velocity_norm
+        # Publish
+        self.current_velocity_pub.publish(current_velocity_msg)
         
 
     # Converts azimuth to yaw. 
